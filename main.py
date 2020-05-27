@@ -15,7 +15,7 @@ async def chanel_list(request):
 
 
 async def websocket_handler(request):
-    ws = web.WebSocketResponse()
+    ws = web.WebSocketResponse(heartbeat=55)
     await ws.prepare(request)
 
     channel = request.match_info.get('channel')
