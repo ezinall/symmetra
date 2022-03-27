@@ -3,9 +3,10 @@ import logging
 import weakref
 from collections import defaultdict
 
+import async_timeout
+import redis.asyncio as redis
 import uvloop
 from aiohttp import web, WSCloseCode
-import aioredis
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -36,17 +37,24 @@ async def websocket_handler(request):
 
 
 async def listen_to_redis(app):
-    try:
-        ch, *_ = await app['redis'].psubscribe('ws.*')
-        async for channel, msg in ch.iter(encoding='utf-8'):
-            *_, socket_channel = channel.decode().split('.')
-            for i in set(app['websockets'][socket_channel]):
-                await i.send_str(msg)
-    except asyncio.CancelledError:
-        pass
-    finally:
-        if not app['redis'].closed:
-            await app['redis'].punsubscribe(ch.name)
+    pubsub = app['pubsub']
+    await pubsub.psubscribe('ws.*')
+
+    while True:
+        try:
+            async with async_timeout.timeout(1):
+                message = await pubsub.get_message(ignore_subscribe_messages=True)
+                if message is not None:
+                    *_, socket_channel = message['channel'].decode().split('.')
+                    print(socket_channel)
+                    for i in set(app['websockets'][socket_channel]):
+                        await i.send_bytes(message['data'])
+                    print(f"(Reader) Message Received: {message}")
+                await asyncio.sleep(0.01)
+        except asyncio.TimeoutError:
+            pass
+        except RuntimeError:
+            break
 
 
 async def start_background_tasks(app):
@@ -54,10 +62,8 @@ async def start_background_tasks(app):
 
 
 async def cleanup_background_tasks(app):
-    app['redis_listener'].cancel()
-    await app['redis_listener']
-    app['redis'].close()
-    await app['redis'].wait_closed()
+    await app['pubsub'].close()
+    await app['redis'].close()
 
 
 async def on_shutdown(app):
@@ -68,10 +74,13 @@ async def on_shutdown(app):
 
 async def create_app(*args, **kwargs):
     app = web.Application()
-    redis = await aioredis.create_redis_pool('redis://localhost')
+
+    redis_connection = redis.from_url('redis://localhost')
+    pubsub: redis.client.PubSub = redis_connection.pubsub()
 
     app.update(
-        redis=redis,
+        redis=redis_connection,
+        pubsub=pubsub,
         websockets=defaultdict(weakref.WeakSet)
     )
 
