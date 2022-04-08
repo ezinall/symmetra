@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  web:
+    build: .
+    command: python ./main.py --host=$HOST --port=$PORT --redis_host=$REDIS_HOST
+    volumes:
+      - .:/code
+    restart: on-failure
+    env_file:
+      - .env
+    network_mode: "host"

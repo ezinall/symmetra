@@ -8,7 +8,7 @@ import redis.asyncio as redis
 import uvloop
 from aiohttp import web, WSCloseCode
 
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+uvloop.install()
 
 
 async def channel_list(request):
@@ -46,10 +46,8 @@ async def listen_to_redis(app):
                 message = await pubsub.get_message(ignore_subscribe_messages=True)
                 if message is not None:
                     *_, socket_channel = message['channel'].decode().split('.')
-                    print(socket_channel)
                     for i in set(app['websockets'][socket_channel]):
                         await i.send_bytes(message['data'])
-                    print(f"(Reader) Message Received: {message}")
                 await asyncio.sleep(0.01)
         except asyncio.TimeoutError:
             pass
@@ -72,10 +70,10 @@ async def on_shutdown(app):
                        message='Server shutdown')
 
 
-async def create_app(*args, **kwargs):
+async def create_app(redis_host, *args, **kwargs):
     app = web.Application()
 
-    redis_connection = redis.from_url('redis://localhost')
+    redis_connection = redis.from_url(redis_host)
     pubsub: redis.client.PubSub = redis_connection.pubsub()
 
     app.update(
@@ -100,9 +98,12 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='aiohttp server')
-    parser.add_argument('--host')
+    parser.add_argument('--hostname')
     parser.add_argument('--port')
     parser.add_argument('--path')
+
+    parser.add_argument('--redis_host', default='redis://localhost')
+
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
@@ -119,4 +120,4 @@ if __name__ == '__main__':
     _logger.addHandler(fh)
     _logger.setLevel(logging.INFO)
 
-    web.run_app(create_app(), host=args.host, port=args.port, path=args.path)
+    web.run_app(create_app(redis_host=args.redis_host), host=args.hostname, port=args.port, path=args.path)
