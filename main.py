@@ -45,9 +45,9 @@ async def listen_to_redis(app):
             async with async_timeout.timeout(1):
                 message = await pubsub.get_message(ignore_subscribe_messages=True)
                 if message is not None:
-                    *_, socket_channel = message['channel'].decode().split('.')
+                    *_, socket_channel = message['channel'].decode().split('.', maxsplit=1)
                     for i in set(app['websockets'][socket_channel]):
-                        await i.send_bytes(message['data'])
+                        await i.send_str(message['data'].decode())
                 await asyncio.sleep(0.01)
         except asyncio.TimeoutError:
             pass
@@ -83,8 +83,8 @@ async def create_app(redis_host, *args, **kwargs):
     )
 
     app.add_routes([
-        web.get('/list', channel_list),
-        web.get('/ws/{channel}', websocket_handler),
+        web.get('/ws/list', channel_list),
+        web.get('/ws/channel/{channel}', websocket_handler),
     ])
 
     app.on_startup.append(start_background_tasks)
