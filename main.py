@@ -1,14 +1,31 @@
 import asyncio
 import logging
+import os
+import sys
 import weakref
 from collections import defaultdict
 
+from aiohttp import web, WSCloseCode, WSMessage
 import async_timeout
+import redis.exceptions as redis_exceptions
 import redis.asyncio as redis
 import uvloop
-from aiohttp import web, WSCloseCode
 
 uvloop.install()
+
+REDIS_HOST = os.getenv('REDIS_HOST', 'redis://localhost')
+
+fh = logging.FileHandler('access.log')
+fh.setLevel(logging.DEBUG)
+_logger = logging.getLogger('aiohttp.access')
+_logger.addHandler(fh)
+_logger.setLevel(logging.INFO)
+
+fh = logging.FileHandler('server.log')
+fh.setLevel(logging.DEBUG)
+_logger = logging.getLogger('aiohttp.server')
+_logger.addHandler(fh)
+_logger.setLevel(logging.INFO)
 
 
 async def channel_list(request):
@@ -24,6 +41,7 @@ async def websocket_handler(request):
 
     try:
         async for msg in ws:
+            msg: WSMessage
             if msg.type == web.WSMsgType.TEXT:
                 for i in set(request.app['websockets'][channel]):
                     if i is not ws:
@@ -36,6 +54,18 @@ async def websocket_handler(request):
     return ws
 
 
+async def liveliness(_):
+    return web.HTTPOk()
+
+
+async def readiness(request):
+    try:
+        await request.app['redis'].ping()
+        return web.HTTPOk()
+    except redis_exceptions.ConnectionError:
+        return web.HTTPInternalServerError()
+
+
 async def listen_to_redis(app):
     pubsub = app['pubsub']
     await pubsub.psubscribe('ws.*')
@@ -43,16 +73,18 @@ async def listen_to_redis(app):
     while True:
         try:
             async with async_timeout.timeout(1):
-                message = await pubsub.get_message(ignore_subscribe_messages=True)
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True)
                 if message is not None:
-                    *_, socket_channel = message['channel'].decode().split('.', maxsplit=1)
+                    *_, socket_channel = message['channel'].decode().\
+                        split('.', maxsplit=1)
                     for i in set(app['websockets'][socket_channel]):
                         await i.send_str(message['data'].decode())
                 await asyncio.sleep(0.01)
         except asyncio.TimeoutError:
             pass
-        except RuntimeError:
-            break
+        except redis_exceptions.ConnectionError:  # если отвалился сервер
+            sys.exit(1)
 
 
 async def start_background_tasks(app):
@@ -70,21 +102,24 @@ async def on_shutdown(app):
                        message='Server shutdown')
 
 
-async def create_app(redis_host, *args, **kwargs):
+async def create_app(*args, **kwargs):
     app = web.Application()
 
-    redis_connection = redis.from_url(redis_host)
-    pubsub: redis.client.PubSub = redis_connection.pubsub()
+    r: redis.Redis = await redis.from_url(REDIS_HOST)
+    await r.ping()
+    pubsub: redis.client.PubSub = r.pubsub()
 
     app.update(
-        redis=redis_connection,
+        redis=r,
         pubsub=pubsub,
         websockets=defaultdict(weakref.WeakSet)
     )
 
     app.add_routes([
-        web.get('/ws/list', channel_list),
         web.get('/ws/channel/{channel}', websocket_handler),
+        web.get('/ws/list', channel_list),
+        web.get('/ws/healthz', liveliness),
+        web.get('/ws/readiness', readiness),
     ])
 
     app.on_startup.append(start_background_tasks)
@@ -92,32 +127,3 @@ async def create_app(redis_host, *args, **kwargs):
     app.on_shutdown.append(on_shutdown)
 
     return app
-
-
-if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser(description='aiohttp server')
-    parser.add_argument('--hostname')
-    parser.add_argument('--port')
-    parser.add_argument('--path')
-
-    parser.add_argument('--redis_host', default='redis://localhost')
-
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO)
-
-    fh = logging.FileHandler('access.log')
-    fh.setLevel(logging.DEBUG)
-    _logger = logging.getLogger('aiohttp.access')
-    _logger.addHandler(fh)
-    _logger.setLevel(logging.INFO)
-
-    fh = logging.FileHandler('server.log')
-    fh.setLevel(logging.DEBUG)
-    _logger = logging.getLogger('aiohttp.server')
-    _logger.addHandler(fh)
-    _logger.setLevel(logging.INFO)
-
-    web.run_app(create_app(redis_host=args.redis_host), host=args.hostname, port=args.port, path=args.path)

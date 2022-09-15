@@ -3,7 +3,7 @@ version: "3.9"
 services:
   web:
     build: .
-    command: python ./main.py --host=$HOST --port=$PORT --redis_host=$REDIS_HOST
+    command: python -m aiohttp.web -H $HOSTNAME -P $PORT main:create_app
     volumes:
       - .:/code
     restart: unless-stopped
