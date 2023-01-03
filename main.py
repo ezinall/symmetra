@@ -28,11 +28,11 @@ _logger.addHandler(fh)
 _logger.setLevel(logging.INFO)
 
 
-async def channel_list(request):
+async def channel_list(request: web.Request) -> web.Response:
     return web.json_response(data=list(request.app['websockets'].keys()))
 
 
-async def websocket_handler(request):
+async def websocket_handler(request: web.Request) -> web.StreamResponse:
     ws = web.WebSocketResponse(heartbeat=55)
     await ws.prepare(request)
 
@@ -54,11 +54,11 @@ async def websocket_handler(request):
     return ws
 
 
-async def liveliness(_):
+async def liveliness(_) -> web.Response:
     return web.HTTPOk()
 
 
-async def readiness(request):
+async def readiness(request) -> web.Response:
     try:
         await request.app['redis'].ping()
         return web.HTTPOk()
@@ -66,7 +66,7 @@ async def readiness(request):
         return web.HTTPInternalServerError()
 
 
-async def listen_to_redis(app):
+async def listen_to_redis(app: web.Application) -> None:
     pubsub = app['pubsub']
     await pubsub.psubscribe('ws.*')
 
@@ -78,26 +78,31 @@ async def listen_to_redis(app):
                 if message is not None:
                     *_, socket_channel = message['channel'].decode().\
                         split('.', maxsplit=1)
-                    for i in set(app['websockets'][socket_channel]):
+                    for i in app['websockets'].get(socket_channel, ()):
                         await i.send_str(message['data'].decode())
                 await asyncio.sleep(0.01)
         except asyncio.TimeoutError:
             pass
         except redis_exceptions.ConnectionError:  # если отвалился сервер
             sys.exit(1)
+        finally:
+            await pubsub.unsubscribe('ws.*')
 
 
-async def start_background_tasks(app):
+async def start_background_tasks(app: web.Application) -> None:
     app['redis_listener'] = asyncio.create_task(listen_to_redis(app))
 
 
-async def cleanup_background_tasks(app):
+async def cleanup_background_tasks(app: web.Application) -> None:
+    app['redis_listener'].cancel()
+    # await app['redis_listener']
+
     await app['pubsub'].close()
     await app['redis'].close()
 
 
 async def on_shutdown(app):
-    for ws in set(ws for ref in app['websockets'].values() for ws in ref):
+    for ws in [ws for ref in app['websockets'].values() for ws in ref]:
         await ws.close(code=WSCloseCode.GOING_AWAY,
                        message='Server shutdown')
 

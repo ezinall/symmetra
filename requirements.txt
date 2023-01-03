@@ -1,4 +1,4 @@
-aiohttp==3.8.1
+aiohttp==3.8.3
 aiosignal==1.2.0
 async-timeout==4.0.2
 attrs==21.4.0
@@ -9,7 +9,7 @@ idna==3.3
 multidict==6.0.2
 packaging==21.3
 pyparsing==3.0.7
-redis==4.3.4
+redis==4.4.0
 typing_extensions==4.1.1
 wrapt==1.14.0
 uvloop==0.16.0
