@@ -11,7 +11,7 @@ import redis.exceptions as redis_exceptions
 import redis.asyncio as redis
 import uvloop
 
-uvloop.install()
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 REDIS_HOST = os.getenv('REDIS_HOST', 'redis://localhost')
 
@@ -67,20 +67,21 @@ async def readiness(request) -> web.Response:
 
 
 async def listen_to_redis(app: web.Application) -> None:
-    pubsub = app['pubsub']
+    pubsub: redis.client.PubSub = app['pubsub']
     await pubsub.psubscribe('ws.*')
 
     while True:
         try:
-            async with async_timeout.timeout(1):
+            async with async_timeout.timeout(0.5):
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True)
-                if message is not None:
-                    *_, socket_channel = message['channel'].decode().\
-                        split('.', maxsplit=1)
-                    for i in app['websockets'].get(socket_channel, ()):
-                        await i.send_str(message['data'].decode())
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0)
+
+            if message is not None:
+                *_, ws_channel = message['channel'].decode().\
+                    split('.', maxsplit=1)
+                for i in app['websockets'].get(ws_channel, ()):
+                    await i.send_str(message['data'].decode())
         except asyncio.TimeoutError:
             pass
         except redis_exceptions.ConnectionError:  # если отвалился сервер
@@ -108,7 +109,7 @@ async def on_shutdown(app):
 
 
 async def create_app(*args, **kwargs):
-    app = web.Application()
+    app: web.Application = web.Application()
 
     r: redis.Redis = await redis.from_url(REDIS_HOST)
     await r.ping()
