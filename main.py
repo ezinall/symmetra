@@ -6,7 +6,6 @@ import weakref
 from collections import defaultdict
 
 from aiohttp import web, WSCloseCode, WSMessage
-import async_timeout
 import redis.exceptions as redis_exceptions
 import redis.asyncio as redis
 import uvloop
@@ -19,13 +18,13 @@ fh = logging.FileHandler('access.log')
 fh.setLevel(logging.DEBUG)
 _logger = logging.getLogger('aiohttp.access')
 _logger.addHandler(fh)
-_logger.setLevel(logging.INFO)
+_logger.setLevel(logging.ERROR)
 
 fh = logging.FileHandler('server.log')
 fh.setLevel(logging.DEBUG)
 _logger = logging.getLogger('aiohttp.server')
 _logger.addHandler(fh)
-_logger.setLevel(logging.INFO)
+_logger.setLevel(logging.ERROR)
 
 
 async def channel_list(request: web.Request) -> web.Response:
@@ -72,22 +71,18 @@ async def listen_to_redis(app: web.Application) -> None:
 
     while True:
         try:
-            async with async_timeout.timeout(0.5):
-                message = await pubsub.get_message(
-                    ignore_subscribe_messages=True)
-                await asyncio.sleep(0)
+            message: dict = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=1)
 
             if message is not None:
                 *_, ws_channel = message['channel'].decode().\
                     split('.', maxsplit=1)
                 for i in app['websockets'].get(ws_channel, ()):
                     await i.send_str(message['data'].decode())
-        except asyncio.TimeoutError:
-            pass
-        except redis_exceptions.ConnectionError:  # если отвалился сервер
+
+        except redis_exceptions.ConnectionError as e:  # если отвалился сервер
+            logging.error('', exc_info=e)
             sys.exit(1)
-        finally:
-            await pubsub.unsubscribe('ws.*')
 
 
 async def start_background_tasks(app: web.Application) -> None:
@@ -118,7 +113,7 @@ async def create_app(*args, **kwargs):
     app.update(
         redis=r,
         pubsub=pubsub,
-        websockets=defaultdict(weakref.WeakSet)
+        websockets=defaultdict(weakref.WeakSet),
     )
 
     app.add_routes([
