@@ -11,7 +11,7 @@ services:
   web:
     build:
       context: .
-    restart: unless-stopped
+    image: 127.0.0.1:5000/symmetra
     env_file:
       - .env
     ports:
@@ -19,7 +19,7 @@ services:
     healthcheck:
       test: curl -sS http://127.0.0.1:8080/healthz || exit 1
       timeout: 3s
-
+    restart: unless-stopped
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
