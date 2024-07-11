@@ -14,17 +14,17 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 REDIS_HOST = os.getenv('REDIS_HOST', 'redis://localhost')
 
-fh = logging.FileHandler('access.log')
-fh.setLevel(logging.DEBUG)
-_logger = logging.getLogger('aiohttp.access')
-_logger.addHandler(fh)
-_logger.setLevel(logging.ERROR)
-
-fh = logging.FileHandler('server.log')
-fh.setLevel(logging.DEBUG)
-_logger = logging.getLogger('aiohttp.server')
-_logger.addHandler(fh)
-_logger.setLevel(logging.ERROR)
+# fh = logging.FileHandler('access.log')
+# fh.setLevel(logging.DEBUG)
+# _logger = logging.getLogger('aiohttp.access')
+# _logger.addHandler(fh)
+# _logger.setLevel(logging.ERROR)
+#
+# fh = logging.FileHandler('server.log')
+# fh.setLevel(logging.DEBUG)
+# _logger = logging.getLogger('aiohttp.server')
+# _logger.addHandler(fh)
+# _logger.setLevel(logging.ERROR)
 
 
 async def channel_list(request: web.Request) -> web.Response:
@@ -97,13 +97,13 @@ async def cleanup_background_tasks(app: web.Application) -> None:
     await app['redis'].close()
 
 
-async def on_shutdown(app):
+async def on_shutdown(app) -> None:
     for ws in [ws for ref in app['websockets'].values() for ws in ref]:
         await ws.close(code=WSCloseCode.GOING_AWAY,
                        message='Server shutdown')
 
 
-async def create_app(*args, **kwargs):
+async def create_app(*args, **kwargs) -> web.Application:
     app: web.Application = web.Application()
 
     r: redis.Redis = await redis.from_url(REDIS_HOST)
@@ -119,8 +119,8 @@ async def create_app(*args, **kwargs):
     app.add_routes([
         web.get('/ws/channel/{channel}', websocket_handler),
         web.get('/ws/list', channel_list),
-        web.get('/ws/healthz', liveliness),
-        web.get('/ws/readiness', readiness),
+        web.get('/healthz', liveliness),
+        web.get('/readiness', readiness),
     ])
 
     app.on_startup.append(start_background_tasks)
