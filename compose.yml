@@ -11,9 +11,9 @@ services:
   web:
     build:
       context: .
-    image: 127.0.0.1:5000/symmetra
-    env_file:
-      - .env
+    image: ${REGISTRY}/symmetra
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
     ports:
       - 8081:8080
     healthcheck:

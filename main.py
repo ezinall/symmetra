@@ -104,7 +104,7 @@ async def on_shutdown(app) -> None:
 
 
 async def create_app(*args, **kwargs) -> web.Application:
-    app: web.Application = web.Application()
+    app: web.Application = web.Application()  # middlewares=[web.normalize_path_middleware()]
 
     r: redis.Redis = await redis.from_url(REDIS_HOST)
     await r.ping()
