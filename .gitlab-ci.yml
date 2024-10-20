@@ -1,10 +1,6 @@
-#include:
-#  - project: 'aiscan/ci'
-#    file: '/templates/.gitlab-ci-template.yml'
-
-default:
-  tags:
-    - shared
+include:
+  - project: 'aiscan/ci'
+    file: '/templates/.gitlab-ci-template.yml'
 
 # To contribute improvements to CI/CD templates, please follow the Development guide at:
 # https://docs.gitlab.com/ee/development/cicd/templates.html
@@ -16,25 +12,3 @@ default:
 #
 # This template uses one generic job with conditional builds
 # for the default branch and all other (MR) branches.
-
-docker-deploy:
-  # Use the official docker image.
-  image: docker:cli
-  stage: deploy
-  services:
-    - docker:dind
-  only:
-    refs:
-      - master
-  when: manual
-  variables:
-    REGISTRY: $CI_REGISTRY
-  before_script:
-    # Display system-wide information
-    - docker info
-    # Log in to a registry
-    - echo $CI_REGISTRY_PASSWORD | docker login --username "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
-  script:
-    - docker compose build
-    - docker compose push
-    - docker stack deploy --compose-file compose.yml --with-registry-auth $CI_PROJECT_NAME
