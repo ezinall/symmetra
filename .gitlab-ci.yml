@@ -1,9 +1,10 @@
+#include:
+#  - project: 'aiscan/ci'
+#    file: '/templates/.gitlab-ci-template.yml'
+
 default:
   tags:
     - shared
-
-stages:
-  - deploy
 
 # To contribute improvements to CI/CD templates, please follow the Development guide at:
 # https://docs.gitlab.com/ee/development/cicd/templates.html
@@ -20,8 +21,6 @@ docker-deploy:
   # Use the official docker image.
   image: docker:cli
   stage: deploy
-  services:
-    - docker:dind
   only:
     refs:
       - master
