@@ -21,6 +21,8 @@ docker-deploy:
   # Use the official docker image.
   image: docker:cli
   stage: deploy
+  services:
+    - docker:dind
   only:
     refs:
       - master
